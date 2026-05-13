@@ -4,3 +4,4 @@ dist/
 *.tsbuildinfo
 *.bak
 .DS_Store
+open-design/
