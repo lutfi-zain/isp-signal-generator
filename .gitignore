@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.pi-lens/
+*.tsbuildinfo
+*.bak
+.DS_Store
