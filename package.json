@@ -1,0 +1,25 @@
+{
+  "name": "isp-signal-generator",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "deploy": "bun run build && wrangler pages deploy dist --project-name isp-signal-generator"
+  },
+  "dependencies": {
+    "lightweight-charts": "^4.2.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "~5.6.2",
+    "vite": "^5.4.0",
+    "wrangler": "^3.107.0"
+  }
+}
