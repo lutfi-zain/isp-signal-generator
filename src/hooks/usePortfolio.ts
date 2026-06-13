@@ -1,9 +1,10 @@
 import { useState, useCallback, useMemo } from "react";
-import type { Trade, Candle, Metrics, ReplayResult } from "../types.ts";
-import { computeMetrics, replayTrades } from "../utils/metrics.ts";
+import type { Trade, Candle, Metrics, ReplayResult, MarketRegime, RegimeStats, RegimeTransition } from "../types.ts";
+import { computeMetrics, replayTrades, computeRegimeStats } from "../utils/metrics.ts";
 
 interface UsePortfolioResult {
 	trades: Trade[];
+	regimeTransitions: RegimeTransition[];
 	initialEquity: number;
 	tradeFee: number;
 	btcHeld: number;
@@ -11,6 +12,7 @@ interface UsePortfolioResult {
 	currentEquity: number;
 	metrics: Metrics;
 	replay: ReplayResult;
+	regimeStats: Record<MarketRegime, RegimeStats>;
 	setInitialEquity: (v: number) => void;
 	setTradeFee: (v: number) => void;
 	addTrade: (
@@ -22,12 +24,39 @@ interface UsePortfolioResult {
 	deleteTrade: (id: number) => void;
 	clearTrades: () => void;
 	importTrades: (trades: Trade[]) => void;
+	addRegimeTransition: (regime: MarketRegime, price: number, date: number) => void;
+	deleteRegimeTransition: (id: number) => void;
+	clearRegimeTransitions: () => void;
+	importRegimeTransitions: (transitions: RegimeTransition[]) => void;
 }
 
 export function usePortfolio(candles: Candle[]): UsePortfolioResult {
-	const [trades, setTrades] = useState<Trade[]>([]);
+	const [trades, setTrades] = useState<Omit<Trade, "regime">[]>([]);
+	const [regimeTransitions, setRegimeTransitions] = useState<RegimeTransition[]>([]);
 	const [initialEquity, setInitialEquity] = useState(10000);
 	const [tradeFee, setTradeFee] = useState(0.1);
+
+	// Helper to resolve the active regime at any date
+	const getActiveRegimeAtDate = useCallback((date: number) => {
+		const sorted = [...regimeTransitions].sort((a, b) => a.date - b.date);
+		let active: MarketRegime = "Neutral";
+		for (const t of sorted) {
+			if (t.date <= date) {
+				active = t.regime;
+			} else {
+				break;
+			}
+		}
+		return active;
+	}, [regimeTransitions]);
+
+	// Map trades with their active regime dynamically
+	const tradesWithRegime = useMemo<Trade[]>(() => {
+		return trades.map((t) => ({
+			...t,
+			regime: getActiveRegimeAtDate(t.date),
+		})) as Trade[];
+	}, [trades, getActiveRegimeAtDate]);
 
 	const addTrade = useCallback(
 		(
@@ -80,7 +109,7 @@ export function usePortfolio(candles: Candle[]): UsePortfolioResult {
 
 				const totalEquity = cash + btc * price;
 
-				const trade: Trade = {
+				const trade = {
 					id: Date.now() + Math.random(),
 					date,
 					action,
@@ -107,6 +136,32 @@ export function usePortfolio(candles: Candle[]): UsePortfolioResult {
 
 	const importTrades = useCallback((newTrades: Trade[]) => {
 		setTrades(newTrades);
+	}, []);
+
+	// Regime Transitions management
+	const addRegimeTransition = useCallback((regime: MarketRegime, price: number, date: number) => {
+		setRegimeTransitions((prev) => {
+			const filtered = prev.filter((t) => t.date !== date);
+			const newTransition: RegimeTransition = {
+				id: Date.now() + Math.random(),
+				date,
+				regime,
+				price,
+			};
+			return [...filtered, newTransition].sort((a, b) => a.date - b.date);
+		});
+	}, []);
+
+	const deleteRegimeTransition = useCallback((id: number) => {
+		setRegimeTransitions((prev) => prev.filter((t) => t.id !== id));
+	}, []);
+
+	const clearRegimeTransitions = useCallback(() => {
+		setRegimeTransitions([]);
+	}, []);
+
+	const importRegimeTransitions = useCallback((newTransitions: RegimeTransition[]) => {
+		setRegimeTransitions(newTransitions);
 	}, []);
 
 	// Derive btcHeld, cashBalance, currentEquity from trades
@@ -148,17 +203,23 @@ export function usePortfolio(candles: Candle[]): UsePortfolioResult {
 	}, [trades, initialEquity, tradeFee, candles]);
 
 	const metrics = useMemo(
-		() => computeMetrics(candles, trades, initialEquity, tradeFee / 100),
-		[candles, trades, initialEquity, tradeFee],
+		() => computeMetrics(candles, tradesWithRegime, initialEquity, tradeFee / 100),
+		[candles, tradesWithRegime, initialEquity, tradeFee],
 	);
 
 	const replay = useMemo(
-		() => replayTrades(candles, trades, initialEquity, tradeFee / 100),
-		[candles, trades, initialEquity, tradeFee],
+		() => replayTrades(candles, tradesWithRegime, initialEquity, tradeFee / 100),
+		[candles, tradesWithRegime, initialEquity, tradeFee],
+	);
+
+	const regimeStats = useMemo(
+		() => computeRegimeStats(tradesWithRegime, initialEquity, tradeFee / 100),
+		[tradesWithRegime, initialEquity, tradeFee],
 	);
 
 	return {
-		trades,
+		trades: tradesWithRegime,
+		regimeTransitions,
 		initialEquity,
 		tradeFee,
 		btcHeld,
@@ -166,11 +227,16 @@ export function usePortfolio(candles: Candle[]): UsePortfolioResult {
 		currentEquity,
 		metrics,
 		replay,
+		regimeStats,
 		setInitialEquity,
 		setTradeFee,
 		addTrade,
 		deleteTrade,
 		clearTrades,
 		importTrades,
+		addRegimeTransition,
+		deleteRegimeTransition,
+		clearRegimeTransitions,
+		importRegimeTransitions,
 	};
 }

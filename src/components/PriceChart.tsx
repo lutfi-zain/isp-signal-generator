@@ -8,11 +8,12 @@ import {
 	type Time,
 	PriceScaleMode,
 } from "lightweight-charts";
-import type { Candle, Trade } from "../types.ts";
+import type { Candle, Trade, RegimeTransition } from "../types.ts";
 
 interface PriceChartProps {
 	candles: Candle[];
 	trades: Trade[];
+	regimeTransitions: RegimeTransition[];
 	logScale: boolean;
 	onSetScale: (log: boolean) => void;
 	onCandleClick: (time: number, price: number) => void;
@@ -22,6 +23,7 @@ interface PriceChartProps {
 export default function PriceChart({
 	candles,
 	trades,
+	regimeTransitions,
 	logScale,
 	onSetScale,
 	onCandleClick,
@@ -37,21 +39,22 @@ export default function PriceChart({
 
 		const chart = createChart(containerRef.current, {
 			layout: {
-				background: { type: ColorType.Solid, color: "#131722" },
-				textColor: "#d1d4dc",
+				background: { type: ColorType.Solid, color: "transparent" },
+				textColor: "#9094a6",
 				fontSize: 11,
+				fontFamily: "Geist Mono, monospace",
 			},
 			grid: {
-				vertLines: { color: "#2a2e39" },
-				horzLines: { color: "#2a2e39" },
+				vertLines: { color: "#2a2d39" },
+				horzLines: { color: "#2a2d39" },
 			},
 			crosshair: {
 				mode: 0,
-				vertLine: { color: "#758696", width: 1, style: 2 },
-				horzLine: { color: "#758696", width: 1, style: 2 },
+				vertLine: { color: "#606474", width: 1, style: 2 },
+				horzLine: { color: "#606474", width: 1, style: 2 },
 			},
 			timeScale: {
-				borderColor: "#2a2e39",
+				borderColor: "#2a2d39",
 				timeVisible: false,
 				secondsVisible: false,
 				rightOffset: 12,
@@ -61,19 +64,19 @@ export default function PriceChart({
 				fixRightEdge: true,
 			},
 			rightPriceScale: {
-				borderColor: "#2a2e39",
+				borderColor: "#2a2d39",
 				scaleMargins: { top: 0.05, bottom: 0.25 },
 				mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
 			},
 		});
 
 		const series = chart.addCandlestickSeries({
-			upColor: "#089981",
-			downColor: "#f23645",
-			borderUpColor: "#089981",
-			borderDownColor: "#f23645",
-			wickUpColor: "#089981",
-			wickDownColor: "#f23645",
+			upColor: "#11977e",
+			downColor: "#dc3e4b",
+			borderUpColor: "#11977e",
+			borderDownColor: "#dc3e4b",
+			wickUpColor: "#11977e",
+			wickDownColor: "#dc3e4b",
 			priceFormat: { type: "price", precision: 2, minMove: 0.01 },
 		});
 
@@ -123,17 +126,40 @@ export default function PriceChart({
 	// Update markers
 	useEffect(() => {
 		if (!seriesRef.current) return;
-		const markers = trades.map((t) => ({
+
+		const tradeMarkers = trades.map((t) => ({
 			time: t.date as Time,
 			position:
 				t.action === "BUY" ? ("belowBar" as const) : ("aboveBar" as const),
-			color: t.action === "BUY" ? "#089981" : "#f23645",
+			color: t.action === "BUY" ? "#11977e" : "#dc3e4b",
 			shape: t.action === "BUY" ? ("arrowUp" as const) : ("arrowDown" as const),
 			text: t.action,
 			size: 1,
 		}));
-		seriesRef.current.setMarkers(markers);
-	}, [trades]);
+
+		const regimeMarkers = regimeTransitions.map((rt) => {
+			let color = "#8b8f9e";
+			if (rt.regime === "Strong Bull") color = "#11977e";
+			else if (rt.regime === "Weak Bull") color = "#1e8a80";
+			else if (rt.regime === "Weak Bear") color = "#e38c10";
+			else if (rt.regime === "Strong Bear") color = "#dc3e4b";
+
+			return {
+				time: rt.date as Time,
+				position: "inBar" as const,
+				color: color,
+				shape: "square" as const,
+				text: `Regime: ${rt.regime}`,
+				size: 1,
+			};
+		});
+
+		const allMarkers = [...tradeMarkers, ...regimeMarkers].sort(
+			(a, b) => Number(a.time) - Number(b.time)
+		);
+
+		seriesRef.current.setMarkers(allMarkers);
+	}, [trades, regimeTransitions]);
 
 	// Click handler
 	useEffect(() => {

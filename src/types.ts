@@ -7,6 +7,8 @@ export interface Candle {
 	close: number;
 }
 
+export type MarketRegime = "Strong Bull" | "Weak Bull" | "Neutral" | "Weak Bear" | "Strong Bear";
+
 /** A trade signal (buy or sell) */
 export interface Trade {
 	id: number;
@@ -17,7 +19,25 @@ export interface Trade {
 	cost: number; // dollar amount committed/received
 	btcHeld: number; // BTC held after this trade
 	totalEquity: number; // total equity after this trade
+	regime: MarketRegime;
 }
+
+export interface RegimeStats {
+	regime: MarketRegime;
+	tradeCount: number;
+	winRate: number;
+	totalReturn: number;
+	avgReturnPct: number;
+	profitFactor: number;
+}
+
+export interface RegimeTransition {
+	id: number;
+	date: number; // Unix timestamp (seconds)
+	regime: MarketRegime;
+	price: number;
+}
+
 
 /** Replayed equity history point */
 export interface EquityPoint {

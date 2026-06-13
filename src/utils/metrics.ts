@@ -4,6 +4,8 @@ import type {
 	Metrics,
 	ReplayResult,
 	EquityPoint,
+	MarketRegime,
+	RegimeStats,
 } from "../types.ts";
 
 /**
@@ -261,3 +263,158 @@ export function computeMetrics(
 		sterling,
 	};
 }
+
+/**
+ * Compute performance analytics grouped by Market Regime.
+ * Uses FIFO matching for buy-sell pairs to attribute returns back to the entry (BUY) regime.
+ */
+export function computeRegimeStats(
+	trades: Trade[],
+	initialEquity: number,
+	fee: number,
+): Record<MarketRegime, RegimeStats> {
+	const regimes: MarketRegime[] = ["Strong Bull", "Weak Bull", "Neutral", "Weak Bear", "Strong Bear"];
+
+	const stats: Record<MarketRegime, RegimeStats> = {} as any;
+	for (const r of regimes) {
+		stats[r] = {
+			regime: r,
+			tradeCount: 0,
+			winRate: 0,
+			totalReturn: 0,
+			avgReturnPct: 0,
+			profitFactor: 0,
+		};
+	}
+
+	const sorted = [...trades].sort((a, b) => a.date - b.date);
+	let cash = initialEquity;
+	let btc = 0;
+
+	const tradeReturnsByRegime: Record<MarketRegime, number[]> = {
+		"Strong Bull": [],
+		"Weak Bull": [],
+		"Neutral": [],
+		"Weak Bear": [],
+		"Strong Bear": [],
+	};
+
+	const tradePnLsByRegime: Record<MarketRegime, number[]> = {
+		"Strong Bull": [],
+		"Weak Bull": [],
+		"Neutral": [],
+		"Weak Bear": [],
+		"Strong Bear": [],
+	};
+
+	// To track buy entries for FIFO matching:
+	interface OpenPosition {
+		price: number;
+		regime: MarketRegime;
+		equityBefore: number;
+		sizeBTC: number; // how much BTC was bought
+		costUSD: number; // how much cash was spent
+	}
+	const openPositions: OpenPosition[] = [];
+
+	for (const t of sorted) {
+		const regime = t.regime || "Neutral";
+		stats[regime].tradeCount++;
+
+		const availEq = cash + btc * t.price;
+
+		if (t.action === "BUY") {
+			const portion = t.equityPct / 100;
+			const investAmt = Math.min(availEq * portion, cash);
+			const feeAmt = investAmt * fee;
+			const netInvest = investAmt - feeAmt;
+			const boughtBTC = netInvest / t.price;
+
+			btc += boughtBTC;
+			cash -= investAmt;
+
+			openPositions.push({
+				price: t.price,
+				regime,
+				equityBefore: availEq,
+				sizeBTC: boughtBTC,
+				costUSD: investAmt,
+			});
+		} else if (t.action === "SELL" && btc > 0) {
+			const portion = t.equityPct / 100;
+			const btcToSell = btc * portion;
+			const grossProceeds = btcToSell * t.price;
+			const feeAmt = grossProceeds * fee;
+			const netProceeds = grossProceeds - feeAmt;
+
+			cash += netProceeds;
+			btc -= btcToSell;
+
+			// Allocate proceeds to open positions (FIFO)
+			let remainingBtcToSell = btcToSell;
+			let totalCostOfSoldBtc = 0;
+			let weightedEntryPrice = 0;
+			const buyRegimesToAttribute: Record<MarketRegime, number> = {} as any; // regime -> BTC amount sold from that regime
+
+			while (remainingBtcToSell > 0 && openPositions.length > 0) {
+				const firstBuy = openPositions[0];
+				if (firstBuy.sizeBTC <= remainingBtcToSell) {
+					// Consume entire buy position
+					remainingBtcToSell -= firstBuy.sizeBTC;
+					totalCostOfSoldBtc += firstBuy.costUSD;
+					weightedEntryPrice += firstBuy.price * firstBuy.sizeBTC;
+					buyRegimesToAttribute[firstBuy.regime] = (buyRegimesToAttribute[firstBuy.regime] || 0) + firstBuy.sizeBTC;
+					openPositions.shift();
+				} else {
+					// Partially consume buy position
+					const fraction = remainingBtcToSell / firstBuy.sizeBTC;
+					firstBuy.sizeBTC -= remainingBtcToSell;
+					const consumedCost = firstBuy.costUSD * fraction;
+					firstBuy.costUSD -= consumedCost;
+					totalCostOfSoldBtc += consumedCost;
+					weightedEntryPrice += firstBuy.price * remainingBtcToSell;
+					buyRegimesToAttribute[firstBuy.regime] = (buyRegimesToAttribute[firstBuy.regime] || 0) + remainingBtcToSell;
+					remainingBtcToSell = 0;
+				}
+			}
+
+			// Calculate returns for matched parts
+			const totalBtcMatched = btcToSell - remainingBtcToSell;
+			if (totalBtcMatched > 0) {
+				const averageEntryPrice = weightedEntryPrice / totalBtcMatched;
+				const priceReturn = (t.price - averageEntryPrice) / averageEntryPrice;
+
+				// Attribute returns & P&L to the regimes of the BUY signals that were closed
+				for (const r of Object.keys(buyRegimesToAttribute) as MarketRegime[]) {
+					const btcAmt = buyRegimesToAttribute[r];
+					const fractionOfSale = btcAmt / btcToSell;
+					const saleProceeds = netProceeds * fractionOfSale;
+					const correspondingCost = totalCostOfSoldBtc * (btcAmt / totalBtcMatched);
+					const dollarReturn = saleProceeds - correspondingCost;
+
+					tradeReturnsByRegime[r].push(priceReturn);
+					tradePnLsByRegime[r].push(dollarReturn);
+				}
+			}
+		}
+	}
+
+	for (const r of regimes) {
+		const returns = tradeReturnsByRegime[r];
+		const pnls = tradePnLsByRegime[r];
+
+		const wins = returns.filter((val) => val > 0);
+		const losses = returns.filter((val) => val < 0);
+
+		stats[r].winRate = returns.length > 0 ? (wins.length / returns.length) * 100 : 0;
+		stats[r].avgReturnPct = returns.length > 0 ? (returns.reduce((a, b) => a + b, 0) / returns.length) * 100 : 0;
+		stats[r].totalReturn = pnls.reduce((a, b) => a + b, 0);
+
+		const grossWinsUSD = pnls.filter((p) => p > 0).reduce((a, b) => a + b, 0);
+		const grossLossesUSD = Math.abs(pnls.filter((p) => p < 0).reduce((a, b) => a + b, 0));
+		stats[r].profitFactor = grossLossesUSD > 0 ? grossWinsUSD / grossLossesUSD : grossWinsUSD > 0 ? Infinity : 0;
+	}
+
+	return stats;
+}
+

@@ -1,4 +1,4 @@
-import type { Trade } from "../types.ts";
+import type { Trade, MarketRegime, RegimeTransition } from "../types.ts";
 
 const CSV_HEADERS = [
 	"Date",
@@ -8,6 +8,13 @@ const CSV_HEADERS = [
 	"Cost",
 	"BTCHeld",
 	"TotalEquity",
+	"Regime",
+];
+
+const REGIME_CSV_HEADERS = [
+	"Date",
+	"Regime",
+	"Price",
 ];
 
 /** Export trades as a CSV blob and trigger download */
@@ -24,6 +31,7 @@ export function exportTradesCSV(trades: Trade[]): void {
 			t.cost.toFixed(2),
 			t.btcHeld.toFixed(8),
 			t.totalEquity.toFixed(2),
+			t.regime || "Neutral",
 		].join(",");
 	});
 
@@ -43,6 +51,7 @@ export function parseCSV(text: string): Trade[] | null {
 	if (lines.length < 2) return null;
 
 	const trades: Trade[] = [];
+	const validRegimes = ["Strong Bull", "Weak Bull", "Neutral", "Weak Bear", "Strong Bear"];
 
 	for (let i = 1; i < lines.length; i++) {
 		const line = lines[i].trim();
@@ -62,6 +71,11 @@ export function parseCSV(text: string): Trade[] | null {
 		const d = new Date(dateStr);
 		if (isNaN(d.getTime())) continue;
 
+		const regimeRaw = parts[7]?.trim() || "Neutral";
+		const regime = validRegimes.includes(regimeRaw)
+			? (regimeRaw as MarketRegime)
+			: "Neutral";
+
 		trades.push({
 			id: Date.now() + Math.random() + trades.length,
 			date: Math.floor(d.getTime() / 1000),
@@ -71,10 +85,70 @@ export function parseCSV(text: string): Trade[] | null {
 			cost: 0,
 			btcHeld: 0,
 			totalEquity: 0,
+			regime,
 		});
 	}
 
 	return trades.length > 0 ? trades : null;
+}
+
+/** Export regime transitions as a CSV blob and trigger download */
+export function exportRegimesCSV(transitions: RegimeTransition[]): void {
+	if (transitions.length === 0) return;
+
+	const rows = transitions.map((t) => {
+		const d = new Date(t.date * 1000);
+		return [
+			d.toISOString().split("T")[0],
+			t.regime,
+			t.price.toFixed(2),
+		].join(",");
+	});
+
+	const csv = REGIME_CSV_HEADERS.join(",") + "\n" + rows.join("\n");
+	const blob = new Blob([csv], { type: "text/csv" });
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = `isp-regimes-btcusd-${new Date().toISOString().split("T")[0]}.csv`;
+	a.click();
+	URL.revokeObjectURL(url);
+}
+
+/** Parse CSV text into RegimeTransition objects. Returns null if parsing fails. */
+export function parseRegimesCSV(text: string): RegimeTransition[] | null {
+	const lines = text.trim().split("\n");
+	if (lines.length < 2) return null;
+
+	const transitions: RegimeTransition[] = [];
+	const validRegimes = ["Strong Bull", "Weak Bull", "Neutral", "Weak Bear", "Strong Bear"];
+
+	for (let i = 1; i < lines.length; i++) {
+		const line = lines[i].trim();
+		if (!line) continue;
+
+		const parts = line.split(",");
+		if (parts.length < 3) continue;
+
+		const dateStr = parts[0].trim();
+		const regimeRaw = parts[1].trim();
+		const price = parseFloat(parts[2].trim());
+
+		if (isNaN(price)) continue;
+		if (!validRegimes.includes(regimeRaw)) continue;
+
+		const d = new Date(dateStr);
+		if (isNaN(d.getTime())) continue;
+
+		transitions.push({
+			id: Date.now() + Math.random() + transitions.length,
+			date: Math.floor(d.getTime() / 1000),
+			regime: regimeRaw as MarketRegime,
+			price,
+		});
+	}
+
+	return transitions.length > 0 ? transitions : null;
 }
 
 /** Read a File and return its text content */

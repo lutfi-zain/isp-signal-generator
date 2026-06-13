@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from "react";
 import { useBitviewData } from "./hooks/useBitviewData.ts";
 import { usePortfolio } from "./hooks/usePortfolio.ts";
+import type { MarketRegime } from "./types.ts";
 import Header from "./components/Header.tsx";
 import PriceChart from "./components/PriceChart.tsx";
 import TradeModal from "./components/TradeModal.tsx";
@@ -47,6 +48,19 @@ export default function App() {
 		[modalPrice, modalDate, portfolio],
 	);
 
+	const handleSetRegime = useCallback(
+		(regime: MarketRegime) => {
+			if (modalPrice === null || modalDate === null) return;
+			portfolio.addRegimeTransition(
+				regime,
+				modalPrice,
+				Math.floor(modalDate.getTime() / 1000),
+			);
+			setModalOpen(false);
+		},
+		[modalPrice, modalDate, portfolio],
+	);
+
 	const handleCloseModal = useCallback(() => {
 		setModalOpen(false);
 	}, []);
@@ -76,46 +90,46 @@ export default function App() {
 			/>
 
 			<main className="container">
-				<PriceChart
-					candles={candles}
-					trades={portfolio.trades}
-					logScale={logScale}
-					onSetScale={setLogScale}
-					onCandleClick={handleCandleClick}
-					dataRange={dataRange}
-				/>
-
 				{error && (
-					<div
-						style={{
-							background: "var(--accent-red)",
-							color: "#fff",
-							padding: "8px 16px",
-							borderRadius: 6,
-							marginBottom: 16,
-							fontSize: 13,
-						}}
-					>
+					<div className="error-banner">
 						Error loading data: {error}. Click "Load Data" to retry.
 					</div>
 				)}
 
-				<div className="bottom-section">
+				<div className="dashboard-grid">
+					<div className="chart-column">
+						<PriceChart
+							candles={candles}
+							trades={portfolio.trades}
+							regimeTransitions={portfolio.regimeTransitions}
+							logScale={logScale}
+							onSetScale={setLogScale}
+							onCandleClick={handleCandleClick}
+							dataRange={dataRange}
+						/>
+						<EquityCurve
+							history={portfolio.replay.equityHistory}
+							initialEquity={portfolio.initialEquity}
+							dataRange={dataRange}
+						/>
+					</div>
+					<div className="metrics-column">
+						<PerformanceMetrics metrics={portfolio.metrics} regimeStats={portfolio.regimeStats} />
+					</div>
+				</div>
+
+				<div className="full-width-section">
 					<TradeTable
 						trades={portfolio.trades}
+						regimeTransitions={portfolio.regimeTransitions}
 						initialEquity={portfolio.initialEquity}
 						tradeFee={portfolio.tradeFee}
 						onDelete={portfolio.deleteTrade}
 						onImport={handleImport}
+						onDeleteRegime={portfolio.deleteRegimeTransition}
+						onImportRegimes={portfolio.importRegimeTransitions}
 					/>
-					<PerformanceMetrics metrics={portfolio.metrics} />
 				</div>
-
-				<EquityCurve
-					history={portfolio.replay.equityHistory}
-					initialEquity={portfolio.initialEquity}
-					dataRange={dataRange}
-				/>
 			</main>
 
 			<StatusBar
@@ -132,6 +146,7 @@ export default function App() {
 				availEquity={portfolio.currentEquity}
 				onClose={handleCloseModal}
 				onTrade={handleTrade}
+				onSetRegime={handleSetRegime}
 			/>
 		</>
 	);

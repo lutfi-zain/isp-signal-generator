@@ -29,22 +29,23 @@ export default function EquityCurve({
 
 		const chart = createChart(containerRef.current, {
 			layout: {
-				background: { type: ColorType.Solid, color: "#131722" },
-				textColor: "#d1d4dc",
+				background: { type: ColorType.Solid, color: "transparent" },
+				textColor: "#9094a6",
 				fontSize: 11,
+				fontFamily: "Geist Mono, monospace",
 			},
 			grid: {
-				vertLines: { color: "#2a2e39" },
-				horzLines: { color: "#2a2e39" },
+				vertLines: { color: "#2a2d39" },
+				horzLines: { color: "#2a2d39" },
 			},
 			timeScale: {
-				borderColor: "#2a2e39",
+				borderColor: "#2a2d39",
 				timeVisible: false,
 				fixLeftEdge: true,
 				fixRightEdge: true,
 			},
 			rightPriceScale: {
-				borderColor: "#2a2e39",
+				borderColor: "#2a2d39",
 				scaleMargins: { top: 0.1, bottom: 0.1 },
 			},
 			height: 250,

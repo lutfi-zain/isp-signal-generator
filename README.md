@@ -56,12 +56,13 @@ ISP fills the critical gap between **strategy ideation** and **systematic execut
 - **Pan & zoom** — scroll to zoom, drag to pan, just like TradingView
 - **LIN / LOG scale toggle** — linear for short-term, logarithmic for multi-year Bitcoin perspective
 - **Click any candle** to place a trade signal directly on the chart
-- Buy/Sell markers rendered as arrows on the time axis
+- Buy/Sell markers rendered as arrows on the time axis along with their **Market Regime** tag
 
 ### 🎯 Systematic Trade Journal
 
 - **Click → Modal → BUY/SELL** — minimal friction, maximum precision
 - **Equity allocation slider** — use 5%–100% of portfolio per signal
+- **Market Regime Tagging** — tag signals with *Strong Bull, Weak Bull, Neutral, Weak Bear, or Strong Bear* during entry
 - **Real-time position tracking** — BTC held, cash balance, total equity
 - **Running P&L per trade** — know exactly when you're up or down
 
